@@ -54,7 +54,12 @@ def collect(issue_url, fetch=api_get):
         raise TriageError("这个地址不是普通 issue。")
     canonical_url = f"https://github.com/{owner}/{repo}/issues/{number}"
     query = f'repo:{owner}/{repo} is:pr is:open in:body "{canonical_url}"'
-    search = fetch("/search/issues", {"q": query, "per_page": 20})
+    try:
+        search = fetch("/search/issues", {"q": query, "per_page": 20})
+        search_error = None
+    except TriageError as exc:
+        search = None
+        search_error = str(exc)
     text = (issue.get("title") or "") + "\n" + (issue.get("body") or "")
     mentions = list(dict.fromkeys(re.findall(r"(?<![\w])(?:\$|€|£)\s?\d[\d,]*(?:\.\d{1,2})?", text)))[:10]
     return {
@@ -66,9 +71,10 @@ def collect(issue_url, fetch=api_get):
         "comment_count": issue.get("comments"),
         "updated_at": issue.get("updated_at"),
         "amount_mentions_unverified": mentions,
-        "open_prs_matching_issue_url": search.get("total_count"),
-        "search_incomplete": bool(search.get("incomplete_results")),
-        "matching_prs": [{"title": item.get("title"), "url": item.get("html_url")} for item in search.get("items", [])],
+        "open_prs_matching_issue_url": search.get("total_count") if search is not None else None,
+        "search_incomplete": bool(search.get("incomplete_results")) if search is not None else None,
+        "search_error": search_error,
+        "matching_prs": [{"title": item.get("title"), "url": item.get("html_url")} for item in search.get("items", [])] if search is not None else None,
         "limitations": ["金额仅为 issue 文本中出现的数字，不代表已托管或保证支付。", "PR 数量来自本仓库开放 PR 正文的 GitHub 搜索，查询包含 issue 完整网址；搜索可能误匹配或遗漏，零结果也不证明没有竞争。", "请人工核实资金、领取资格、付款方式、AI 规则和验收要求。"],
     }
 
@@ -86,7 +92,9 @@ def render(result):
         f"文本中提及的金额（未验证）：{', '.join(result['amount_mentions_unverified']) or '未发现'}",
         f"用完整 issue 网址搜索正文返回的开放 PR：{show(result['open_prs_matching_issue_url'])}" + ("（GitHub 报告搜索结果不完整）" if result['search_incomplete'] else ""),
     ]
-    lines.extend(f"  - {pr['title']}: {pr['url']}" for pr in result["matching_prs"])
+    if result["search_error"]:
+        lines.append(f"PR 搜索不可用，竞争情况未知：{result['search_error']}")
+    lines.extend(f"  - {pr['title']}: {pr['url']}" for pr in result["matching_prs"] or [])
     lines.append("注意：")
     lines.extend("  - " + item for item in result["limitations"])
     return "\n".join(lines)
