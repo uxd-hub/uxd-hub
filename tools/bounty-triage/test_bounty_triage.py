@@ -1,6 +1,7 @@
 import io
+import json
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
@@ -25,17 +26,48 @@ class BountyTriageTests(unittest.TestCase):
         self.assertEqual(result["amount_mentions_unverified"], ["$25"])
         self.assertEqual(result["open_prs_matching_issue_url"], 1)
         self.assertTrue(result["search_incomplete"])
+        self.assertIsNone(result["search_error"])
         self.assertIn('"https://github.com/a/b/issues/3"', calls[1][1]["q"])
         self.assertIn("in:body", calls[1][1]["q"])
         self.assertIn("可能误匹配或遗漏", triage.render(result))
         self.assertIn("零结果也不证明没有竞争", triage.render(result))
 
-    def test_search_fails_instead_of_showing_zero_competitors(self):
+    def test_search_failure_preserves_issue_and_reports_unknown_competition(self):
         def fetch(path, params=None):
             if path.startswith('/repos/'):
-                return {"title": "Test", "body": "", "state": "closed"}
+                return {"title": "Test $25", "body": "", "state": "closed", "comments": 3}
             raise triage.TriageError("搜索不可用")
-        with self.assertRaisesRegex(triage.TriageError, "搜索不可用"):
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertEqual(result["title"], "Test $25")
+        self.assertEqual(result["state"], "closed")
+        self.assertEqual(result["comment_count"], 3)
+        self.assertIsNone(result["open_prs_matching_issue_url"])
+        self.assertIsNone(result["search_incomplete"])
+        self.assertIsNone(result["matching_prs"])
+        self.assertEqual(result["search_error"], "搜索不可用")
+        output = triage.render(result)
+        self.assertIn("PR 搜索不可用，竞争情况未知：搜索不可用", output)
+        self.assertIn("开放 PR：未知", output)
+
+    def test_cli_json_reports_search_failure_as_null(self):
+        def fetch(path, params=None):
+            if path.startswith('/repos/'):
+                return {"title": "An issue", "state": "open"}
+            raise triage.TriageError("GitHub API 请求达到频率限制，请稍后重试。")
+        stdout = io.StringIO()
+        collect = triage.collect
+        with patch("bounty_triage.collect", side_effect=lambda url: collect(url, fetch)), redirect_stdout(stdout):
+            self.assertEqual(triage.main(["https://github.com/a/b/issues/3", "--json"]), 0)
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(result["title"], "An issue")
+        self.assertIsNone(result["open_prs_matching_issue_url"])
+        self.assertIsNone(result["matching_prs"])
+        self.assertIn("频率限制", result["search_error"])
+
+    def test_issue_fetch_failure_remains_fatal(self):
+        def fetch(path, params=None):
+            raise triage.TriageError("无法连接")
+        with self.assertRaisesRegex(triage.TriageError, "无法连接"):
             triage.collect("https://github.com/a/b/issues/3", fetch)
 
     def test_rate_limit_is_explained_without_exposing_token(self):
