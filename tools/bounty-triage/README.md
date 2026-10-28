@@ -18,6 +18,8 @@ python bounty_triage.py https://github.com/OWNER/REPO/issues/123
 
 工具还用该 issue 的**完整网址**搜索同仓库开放 PR 的正文。GitHub 搜索不保证精确匹配，可能误匹配；其他 PR 可能只写 `#123`、来自其他仓库，或者根本没有公开提及该任务，因此也可能遗漏：显示为零不代表没有竞争。搜索服务如果返回不完整标志，工具会提示；结果最多列出 20 个 PR。
 
+如果 issue 已读取成功，但 PR 搜索因网络或限流等原因失败，工具仍显示 issue 信息，竞争情况显示为“未知”，同时说明搜索失败原因。JSON 输出的 `open_prs_matching_issue_url`、`search_incomplete` 和 `matching_prs` 此时均为 `null`，`search_error` 记录原因。issue 本身无法读取时，工具会报错并退出。
+
 请人工核实任务是否接受 AI 协助、验收流程、资金状态、用户所在地的收款资格和付款方式，再决定是否投入时间。
 
 ## 测试
