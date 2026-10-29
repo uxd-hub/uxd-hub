@@ -19,6 +19,8 @@ class BountyTriageTests(unittest.TestCase):
         calls = []
         def fetch(path, params=None):
             calls.append((path, params))
+            if path.endswith('/timeline'):
+                return []
             if path.startswith('/repos/'):
                 return {"title": "Fix layout for $25", "body": "Reward not confirmed", "state": "open", "assignees": [], "comments": 2, "updated_at": "2026-01-01T00:00:00Z"}
             return {"total_count": 1, "incomplete_results": True, "items": [{"title": "A fix", "html_url": "https://github.com/a/b/pull/1"}]}
@@ -34,6 +36,8 @@ class BountyTriageTests(unittest.TestCase):
 
     def test_search_failure_preserves_issue_and_reports_unknown_competition(self):
         def fetch(path, params=None):
+            if path.endswith('/timeline'):
+                return []
             if path.startswith('/repos/'):
                 return {"title": "Test $25", "body": "", "state": "closed", "comments": 3}
             raise triage.TriageError("搜索不可用")
@@ -51,6 +55,8 @@ class BountyTriageTests(unittest.TestCase):
 
     def test_cli_json_reports_search_failure_as_null(self):
         def fetch(path, params=None):
+            if path.endswith('/timeline'):
+                return []
             if path.startswith('/repos/'):
                 return {"title": "An issue", "state": "open"}
             raise triage.TriageError("GitHub API 请求达到频率限制，请稍后重试。")
@@ -69,6 +75,37 @@ class BountyTriageTests(unittest.TestCase):
             raise triage.TriageError("无法连接")
         with self.assertRaisesRegex(triage.TriageError, "无法连接"):
             triage.collect("https://github.com/a/b/issues/3", fetch)
+
+    def test_timeline_prs_filter_deduplicate_and_paginate(self):
+        pr = {"event": "cross-referenced", "source": {"issue": {"title": "Fix", "html_url": "https://github.com/x/y/pull/7", "state": "open", "pull_request": {}}}}
+        closed = {"event": "cross-referenced", "source": {"issue": {"html_url": "https://github.com/x/y/pull/8", "state": "closed", "pull_request": {}}}}
+        issue = {"event": "cross-referenced", "source": {"issue": {"html_url": "https://github.com/x/y/issues/3", "state": "open"}}}
+        pages = []
+        def fetch(path, params=None):
+            pages.append(params["page"])
+            return [pr] * 100 if params["page"] == 1 else [pr, closed, issue]
+        result, incomplete = triage.timeline_prs("a", "b", 3, fetch)
+        self.assertEqual(pages, [1, 2])
+        self.assertFalse(incomplete)
+        self.assertEqual(result, [{"title": "Fix", "url": "https://github.com/x/y/pull/7"}])
+
+    def test_timeline_page_limit_is_explicitly_incomplete(self):
+        result, incomplete = triage.timeline_prs("a", "b", 3, lambda path, params: [{}] * 100)
+        self.assertTrue(incomplete)
+        self.assertEqual(result, [])
+
+    def test_timeline_failure_reports_unknown_instead_of_empty(self):
+        def fetch(path, params=None):
+            if path.endswith("/timeline"):
+                raise triage.TriageError("时间线不可用")
+            if path.startswith("/repos/"):
+                return {"title": "Test", "state": "open"}
+            return {"total_count": 0, "items": []}
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertIsNone(result["timeline_prs"])
+        self.assertIsNone(result["timeline_incomplete"])
+        self.assertIn("时间线关联 PR 未知", triage.render(result))
+        self.assertEqual(result["timeline_error"], "时间线不可用")
 
     def test_rate_limit_is_explained_without_exposing_token(self):
         err = HTTPError("https://api.github.com", 403, "Forbidden", {"X-RateLimit-Remaining": "0"}, None)
