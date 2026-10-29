@@ -1,21 +1,7 @@
-# Hi, I'm uxd-hub 👋
+# uxd-hub
 
-Exploring practical tools and open-source collaboration, one small step at a time.
+做些实用小工具，也记录开源项目里的探索。
 
-探索实用工具与开源协作，从解决一个个具体问题开始。
+## 项目
 
-## What I'm exploring · 关注方向
-
-- **Useful tools** — small utilities that make everyday work easier.
-- **Automation** — thoughtful ways to reduce repetitive work.
-- **Open source** — learning from projects and contributing useful improvements.
-
-## How I work · 工作方式
-
-Start with a real problem, make the smallest useful change, and check the result. I use AI as an assistant while reviewing and testing the work before sharing it.
-
-从实际问题出发，先完成最小而有用的改进，再检查结果。使用 AI 辅助，并在分享前审阅和测试。
-
-## Projects · 项目
-
-- [Bounty Triage](https://github.com/uxd-hub/uxd-hub/tree/main/tools/bounty-triage) — a small read-only tool for reviewing GitHub issues and possible competition before spending time on them. / 一个只读小工具，帮助初步查看 GitHub 任务状态和竞争线索。
+- [Bounty Triage](https://github.com/uxd-hub/uxd-hub/tree/main/tools/bounty-triage)：查看 GitHub 任务状态和相关提交，帮忙判断哪些任务值得进一步了解。
