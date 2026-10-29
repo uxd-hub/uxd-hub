@@ -47,6 +47,35 @@ def api_get(path, params=None):
         raise TriageError("GitHub API 返回了无法解析的数据。") from None
 
 
+def timeline_prs(owner, repo, number, fetch, max_pages=3):
+    """Return distinct open PRs referenced in up to 300 timeline events.
+
+    A full final page is conservatively marked incomplete; this avoids trusting
+    the absence of results when additional pages may exist.
+    """
+    prs = {}
+    path = f"/repos/{owner}/{repo}/issues/{number}/timeline"
+    for page in range(1, max_pages + 1):
+        events = fetch(path, {"per_page": 100, "page": page})
+        if not isinstance(events, list):
+            raise TriageError("GitHub timeline 返回了无法识别的数据。")
+        for event in events:
+            if not isinstance(event, dict) or event.get("event") != "cross-referenced":
+                continue
+            source = event.get("source") or {}
+            if not isinstance(source, dict):
+                continue
+            issue = source.get("issue") or {}
+            if not isinstance(issue, dict):
+                continue
+            url = issue.get("html_url")
+            if issue.get("pull_request") is not None and issue.get("state") == "open" and isinstance(url, str):
+                prs[url] = {"title": issue.get("title"), "url": url}
+        if len(events) < 100:
+            return list(prs.values()), False
+    return list(prs.values()), True
+
+
 def collect(issue_url, fetch=api_get):
     owner, repo, number = parse_issue_url(issue_url)
     issue = fetch(f"/repos/{owner}/{repo}/issues/{number}")
@@ -60,6 +89,11 @@ def collect(issue_url, fetch=api_get):
     except TriageError as exc:
         search = None
         search_error = str(exc)
+    try:
+        referenced_prs, timeline_incomplete = timeline_prs(owner, repo, number, fetch)
+        timeline_error = None
+    except TriageError as exc:
+        referenced_prs, timeline_incomplete, timeline_error = None, None, str(exc)
     text = (issue.get("title") or "") + "\n" + (issue.get("body") or "")
     mentions = list(dict.fromkeys(re.findall(r"(?<![\w])(?:\$|€|£)\s?\d[\d,]*(?:\.\d{1,2})?", text)))[:10]
     return {
@@ -75,7 +109,10 @@ def collect(issue_url, fetch=api_get):
         "search_incomplete": bool(search.get("incomplete_results")) if search is not None else None,
         "search_error": search_error,
         "matching_prs": [{"title": item.get("title"), "url": item.get("html_url")} for item in search.get("items", [])] if search is not None else None,
-        "limitations": ["金额仅为 issue 文本中出现的数字，不代表已托管或保证支付。", "PR 数量来自本仓库开放 PR 正文的 GitHub 搜索，查询包含 issue 完整网址；搜索可能误匹配或遗漏，零结果也不证明没有竞争。", "请人工核实资金、领取资格、付款方式、AI 规则和验收要求。"],
+        "timeline_prs": referenced_prs,
+        "timeline_incomplete": timeline_incomplete,
+        "timeline_error": timeline_error,
+        "limitations": ["金额仅为 issue 文本中出现的数字，不代表已托管或保证支付。", "PR 数量来自本仓库开放 PR 正文的 GitHub 搜索，查询包含 issue 完整网址；搜索可能误匹配或遗漏，零结果也不证明没有竞争。", "时间线仅包含 GitHub 记录的关联，最多读取前 300 条事件；关联不一定是解决方案，遗漏和重复引用均可能发生，零结果不证明没有竞争。", "请人工核实资金、领取资格、付款方式、AI 规则和验收要求。"],
     }
 
 
@@ -95,6 +132,11 @@ def render(result):
     if result["search_error"]:
         lines.append(f"PR 搜索不可用，竞争情况未知：{result['search_error']}")
     lines.extend(f"  - {pr['title']}: {pr['url']}" for pr in result["matching_prs"] or [])
+    if result["timeline_error"]:
+        lines.append(f"时间线关联 PR 未知：{result['timeline_error']}")
+    else:
+        lines.append(f"时间线记录的开放关联 PR：{len(result['timeline_prs'])}" + ("（已达读取上限，结果可能不完整）" if result["timeline_incomplete"] else ""))
+        lines.extend(f"  - {pr['title']}: {pr['url']}" for pr in result["timeline_prs"])
     lines.append("注意：")
     lines.extend("  - " + item for item in result["limitations"])
     return "\n".join(lines)
