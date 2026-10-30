@@ -98,7 +98,7 @@ def extract_amount_mentions(text):
     number = r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?'
     prefix_tail = r'(?:\s*(?:[万亿]元?|元))?'
     unit = r'(?:USDC|USDT|USD)(?![A-Za-z0-9_])'
-    pattern = re.compile(r'(?<![A-Za-z0-9_.,])(?:人民币\s*' + number + r'(?![\d.,])' + prefix_tail + r'|\$\s*' + number + r'(?![\d.,])' + prefix_tail + r'(?:\s*' + unit + r')?|[€£¥￥]\s*' + number + r'(?![\d.,])' + prefix_tail + r'|' + number + r'\s*' + unit + r'|' + number + r'\s*[万亿]?元)', re.IGNORECASE)
+    pattern = re.compile(r'(?<![A-Za-z0-9_.,])(?:人民币\s*' + number + r'(?!\d|[.,]\d)' + prefix_tail + r'|\$\s*' + number + r'(?!\d|[.,]\d)' + prefix_tail + r'(?:\s*' + unit + r')?|[€£¥￥]\s*' + number + r'(?!\d|[.,]\d)' + prefix_tail + r'|' + number + r'\s*' + unit + r'|' + number + r'\s*[万亿]?元)', re.IGNORECASE)
     return list(dict.fromkeys(pattern.findall(text)))[:10]
 
 

@@ -210,6 +210,17 @@ class AmountTests(unittest.TestCase):
                 self.assertEqual(triage.extract_amount_mentions(text), [])
         self.assertEqual(triage.extract_amount_mentions("$50 and 25元! 25元"), ["$50", "25元"])
 
+    def test_amounts_followed_by_sentence_punctuation(self):
+        cases = {
+            "$100.": ["$100"], "$50,": ["$50"], "$1,234.50.": ["$1,234.50"],
+            "人民币50，": ["人民币50"], "¥50。": ["¥50"], "25元，": ["25元"],
+            "125 USDC.": ["125 USDC"], "100 USD, then 5 USDT.": ["100 USD", "5 USDT"],
+            "$1,23": [], "$3.141": [], "$1.2.3": [], "人民币3.141": [],
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(triage.extract_amount_mentions(text), expected)
+
     def test_duplicate_mentions_are_deduplicated(self):
         self.assertEqual(triage.extract_amount_mentions("悬赏25元，25元"), ["25元"])
 
