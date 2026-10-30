@@ -127,5 +127,38 @@ class BountyTriageTests(unittest.TestCase):
         self.assertIn("请输入", errors.getvalue())
 
 
+class RedirectTests(unittest.TestCase):
+    def test_redirect_targets_are_restricted(self):
+        from urllib.request import Request
+        for code in (301, 302, 303, 307, 308):
+            req = Request("https://api.github.com/repos/a/b", headers={"Authorization": "Bearer test-token"})
+            for target in ("https://evil.example/x", "http://api.github.com/x", "https://api.github.com.evil.example/x", "https://api.github.com@evil.example/x"):
+                with self.subTest(code=code, target=target), self.assertRaises(triage.TriageError):
+                    triage.GitHubRedirectHandler().redirect_request(req, None, code, "redirect", {}, target)
+            if code != 308:
+                good = triage.GitHubRedirectHandler().redirect_request(req, None, code, "redirect", {}, "https://api.github.com/repos/new/b")
+                self.assertEqual(good.full_url, "https://api.github.com/repos/new/b")
+                self.assertEqual(good.get_header("Authorization"), "Bearer test-token")
+
+    def test_opener_blocks_cross_origin_before_second_request(self):
+        from urllib.request import HTTPSHandler, build_opener, Request
+        from urllib.response import addinfourl
+        from email.message import Message
+        for code in (301, 302, 303, 307, 308):
+            seen = []
+            class FakeHTTPS(HTTPSHandler):
+                def https_open(self, req):
+                    seen.append(req.full_url)
+                    headers = Message()
+                    headers["Location"] = "https://evil.example/steal"
+                    response = addinfourl(io.BytesIO(b""), headers, req.full_url, code)
+                    response.msg = "redirect"
+                    return response
+            opener = build_opener(FakeHTTPS(), triage.GitHubRedirectHandler())
+            with self.subTest(code=code), self.assertRaises(triage.TriageError):
+                opener.open(Request("https://api.github.com/repos/a/b", headers={"Authorization": "Bearer test-token"}))
+            self.assertEqual(seen, ["https://api.github.com/repos/a/b"])
+
+
 if __name__ == "__main__":
     unittest.main()
