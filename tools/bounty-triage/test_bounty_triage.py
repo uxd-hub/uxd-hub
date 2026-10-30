@@ -34,6 +34,40 @@ class BountyTriageTests(unittest.TestCase):
         self.assertIn("可能误匹配或遗漏", triage.render(result))
         self.assertIn("零结果也不证明没有竞争", triage.render(result))
 
+    def test_issue_labels_are_shown_in_text_and_json(self):
+        def fetch(path, params=None):
+            if path.endswith("/timeline"):
+                return []
+            if path.startswith("/repos/"):
+                return {"title": "Funded issue", "labels": [
+                    {"name": "funded-live"}, {"name": "verification-unavailable"}
+                ]}
+            return {"total_count": 0, "items": []}
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertEqual(result["labels"], ["funded-live", "verification-unavailable"])
+        self.assertIn("标签：funded-live, verification-unavailable", triage.render(result))
+        out = io.StringIO()
+        triage.print_json(result, out)
+        self.assertEqual(json.loads(out.getvalue())["labels"], result["labels"])
+
+    def test_missing_or_invalid_labels_are_not_invented(self):
+        def fetch(path, params=None):
+            if path.endswith("/timeline"):
+                return []
+            if path.startswith("/repos/"):
+                return {"title": "Test", "labels": [{}, {"name": ""}, None]}
+            return {"total_count": 0, "items": []}
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertEqual(result["labels"], [])
+        self.assertIn("标签：未列出", triage.render(result))
+        def fetch_null(path, params=None):
+            if path.endswith("/timeline"):
+                return []
+            if path.startswith("/repos/"):
+                return {"title": "Test", "labels": None}
+            return {"total_count": 0, "items": []}
+        self.assertEqual(triage.collect("https://github.com/a/b/issues/3", fetch_null)["labels"], [])
+
     def test_search_failure_preserves_issue_and_reports_unknown_competition(self):
         def fetch(path, params=None):
             if path.endswith('/timeline'):
