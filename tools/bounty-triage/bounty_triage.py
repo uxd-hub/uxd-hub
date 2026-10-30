@@ -159,6 +159,24 @@ def render(result):
     return "\n".join(lines)
 
 
+def safe_print(text, stream):
+    encoding = getattr(stream, "encoding", None)
+    if encoding:
+        text = text.encode(encoding, errors="backslashreplace").decode(encoding)
+    print(text, file=stream)
+
+
+def print_json(result, stream):
+    text = json.dumps(result, ensure_ascii=False, indent=2)
+    encoding = getattr(stream, "encoding", None)
+    if encoding:
+        try:
+            text.encode(encoding)
+        except UnicodeEncodeError:
+            text = json.dumps(result, ensure_ascii=True, indent=2)
+    print(text, file=stream)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="只读检查 GitHub issue 的状态、金额提及和部分竞争信号。")
     parser.add_argument("issue_url", help="GitHub issue 地址")
@@ -167,9 +185,9 @@ def main(argv=None):
     try:
         result = collect(args.issue_url)
     except TriageError as exc:
-        print(f"检查失败：{exc}", file=sys.stderr)
+        safe_print(f"检查失败：{exc}", sys.stderr)
         return 1
-    print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else render(result))
+    print_json(result, sys.stdout) if args.json else safe_print(render(result), sys.stdout)
     return 0
 
 
