@@ -93,6 +93,14 @@ def timeline_prs(owner, repo, number, fetch, max_pages=3):
     return list(prs.values()), True
 
 
+def extract_amount_mentions(text):
+    """Find currency mentions without asserting that they are rewards."""
+    number = r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?'
+    prefix_tail = r'(?:\s*(?:[万亿]元?|元))?'
+    pattern = re.compile(r'(?<![A-Za-z0-9_.,])(?:人民币\s*' + number + r'(?![\d.,])' + prefix_tail + r'|[$€£¥￥]\s*' + number + r'(?![\d.,])' + prefix_tail + r'|' + number + r'\s*[万亿]?元)')
+    return list(dict.fromkeys(pattern.findall(text)))[:10]
+
+
 def collect(issue_url, fetch=api_get):
     owner, repo, number = parse_issue_url(issue_url)
     issue = fetch(f"/repos/{owner}/{repo}/issues/{number}")
@@ -112,7 +120,7 @@ def collect(issue_url, fetch=api_get):
     except TriageError as exc:
         referenced_prs, timeline_incomplete, timeline_error = None, None, str(exc)
     text = (issue.get("title") or "") + "\n" + (issue.get("body") or "")
-    mentions = list(dict.fromkeys(re.findall(r"(?<![\w])(?:\$|€|£)\s?\d[\d,]*(?:\.\d{1,2})?", text)))[:10]
+    mentions = extract_amount_mentions(text)
     return {
         "issue_url": canonical_url,
         "title": issue.get("title"),
