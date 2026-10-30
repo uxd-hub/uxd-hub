@@ -192,5 +192,17 @@ class EncodingTests(unittest.TestCase):
         self.assertEqual(json.loads(out.getvalue())["title"], "💰")
 
 
+class AmountTests(unittest.TestCase):
+    def test_currency_mentions_are_preserved_without_truncation(self):
+        text = "悬赏25元，赏金¥50，￥1,200.50，人民币50元，50 万元，￥50万，1.5亿元，$25，€9.50"
+        self.assertEqual(triage.extract_amount_mentions(text), ["25元", "¥50", "￥1,200.50", "人民币50元", "50 万元", "￥50万", "1.5亿元", "$25", "€9.50"])
+
+    def test_dates_versions_and_invalid_decimals_do_not_match(self):
+        self.assertEqual(triage.extract_amount_mentions("v1.2.3元，2026年10月，3.141元"), [])
+
+    def test_duplicate_mentions_are_deduplicated(self):
+        self.assertEqual(triage.extract_amount_mentions("悬赏25元，25元"), ["25元"])
+
+
 if __name__ == "__main__":
     unittest.main()
