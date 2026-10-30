@@ -200,6 +200,16 @@ class AmountTests(unittest.TestCase):
     def test_dates_versions_and_invalid_decimals_do_not_match(self):
         self.assertEqual(triage.extract_amount_mentions("v1.2.3元，2026年10月，3.141元"), [])
 
+    def test_dollar_codes_and_stablecoins(self):
+        text = "125 USDC, 100 USD, 50usdt; 1,250.50 UsDc; $100 USD; $ 12.50usdc"
+        self.assertEqual(triage.extract_amount_mentions(text), [
+            "125 USDC", "100 USD", "50usdt", "1,250.50 UsDc", "$100 USD", "$ 12.50usdc"
+        ])
+        for text in ("125 USDCX", "125 USD_foo", "125 USD1", "x125 USDC", "1.234 USDC", "1,23 USDC", "123"):
+            with self.subTest(text=text):
+                self.assertEqual(triage.extract_amount_mentions(text), [])
+        self.assertEqual(triage.extract_amount_mentions("$50 and 25元! 25元"), ["$50", "25元"])
+
     def test_duplicate_mentions_are_deduplicated(self):
         self.assertEqual(triage.extract_amount_mentions("悬赏25元，25元"), ["25元"])
 
