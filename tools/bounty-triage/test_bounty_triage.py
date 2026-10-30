@@ -120,6 +120,13 @@ class BountyTriageTests(unittest.TestCase):
             with self.assertRaisesRegex(triage.TriageError, "无法连接"):
                 triage.api_get("/x")
 
+    def test_cli_handles_malformed_ipv6_url_without_traceback(self):
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            self.assertEqual(triage.main(["https://[invalid"]), 1)
+        self.assertIn("请输入", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
+
     def test_cli_rejects_invalid_url(self):
         errors = io.StringIO()
         with redirect_stderr(errors):
