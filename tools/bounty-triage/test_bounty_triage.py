@@ -167,5 +167,30 @@ class RedirectTests(unittest.TestCase):
             self.assertEqual(seen, ["https://api.github.com/repos/a/b"])
 
 
+class EncodingTests(unittest.TestCase):
+    def test_text_in_gbk_handles_unrepresentable_emoji(self):
+        raw = io.BytesIO()
+        out = io.TextIOWrapper(raw, encoding="gbk", errors="strict", write_through=True)
+        triage.safe_print("标题 💰", out)
+        self.assertIn(r"\U0001f4b0", raw.getvalue().decode("gbk"))
+
+    def test_json_is_lossless_for_gbk_ascii_and_utf8(self):
+        value = {"title": "任务 💰", "status": None}
+        for encoding in ("gbk", "ascii", "utf-8"):
+            with self.subTest(encoding=encoding):
+                raw = io.BytesIO()
+                out = io.TextIOWrapper(raw, encoding=encoding, errors="strict", write_through=True)
+                triage.print_json(value, out)
+                self.assertEqual(json.loads(raw.getvalue().decode(encoding)), value)
+
+    def test_stringio_remains_supported(self):
+        out = io.StringIO()
+        triage.safe_print("任务 💰", out)
+        self.assertIn("💰", out.getvalue())
+        out = io.StringIO()
+        triage.print_json({"title": "💰"}, out)
+        self.assertEqual(json.loads(out.getvalue())["title"], "💰")
+
+
 if __name__ == "__main__":
     unittest.main()
