@@ -8,11 +8,25 @@ import re
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request, HTTPRedirectHandler, build_opener
 
 
 class TriageError(Exception):
     """An expected input or API error."""
+
+
+class GitHubRedirectHandler(HTTPRedirectHandler):
+    """Keep authorization headers on GitHub's API origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urlsplit(newurl)
+        if target.scheme.lower() != "https" or target.netloc.lower() != "api.github.com":
+            raise TriageError("GitHub API 重定向到不受信任的地址，已拒绝。")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def urlopen(request, timeout=20):
+    return build_opener(GitHubRedirectHandler()).open(request, timeout=timeout)
 
 
 def parse_issue_url(value):
