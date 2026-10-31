@@ -102,6 +102,48 @@ def extract_amount_mentions(text):
     return list(dict.fromkeys(pattern.findall(text)))[:10]
 
 
+def recent_relevant_comments(owner, repo, number, total, reporter, fetch):
+    """Inspect up to 300 comments ordered by creation, not edits."""
+    page_size, max_pages = 100, 3
+    known_total = isinstance(total, int) and not isinstance(total, bool) and total >= 0
+    last_page = max(1, (total + page_size - 1) // page_size) if known_total else 1
+    start = max(1, last_page - max_pages + 1)
+    relevant = []
+    inspected = 0
+    full_last = False
+    path = f"/repos/{owner}/{repo}/issues/{number}/comments"
+    for page in range(start, start + max_pages):
+        comments = fetch(path, {"per_page": page_size, "page": page})
+        if not isinstance(comments, list):
+            raise TriageError("GitHub 评论返回了无法识别的数据。")
+        inspected += len(comments)
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+            user = comment.get("user") or {}
+            author = user.get("login") if isinstance(user, dict) else None
+            association = comment.get("author_association")
+            if association not in ("OWNER", "MEMBER", "COLLABORATOR") and not (
+                isinstance(author, str) and isinstance(reporter, str) and author.lower() == reporter.lower()
+            ):
+                continue
+            body = comment.get("body")
+            body = body if isinstance(body, str) else ""
+            relevant.append({
+                "author": author, "association": association,
+                "created_at": comment.get("created_at"), "updated_at": comment.get("updated_at"),
+                "url": comment.get("html_url"), "body": body[:1200],
+                "body_truncated": len(body) > 1200,
+            })
+        full_last = len(comments) == page_size
+        if not full_last:
+            break
+    # Counts can change during pagination; matching counts are not a guarantee.
+    incomplete = (not known_total or start > 1 or full_last or len(relevant) > 5 or
+                  (start == 1 and known_total and inspected != total))
+    return relevant[-5:], incomplete
+
+
 def collect(issue_url, fetch=api_get):
     owner, repo, number = parse_issue_url(issue_url)
     issue = fetch(f"/repos/{owner}/{repo}/issues/{number}")
@@ -120,6 +162,14 @@ def collect(issue_url, fetch=api_get):
         timeline_error = None
     except TriageError as exc:
         referenced_prs, timeline_incomplete, timeline_error = None, None, str(exc)
+    try:
+        user = issue.get("user") or {}
+        reporter = user.get("login") if isinstance(user, dict) else None
+        comments, comments_incomplete = recent_relevant_comments(
+            owner, repo, number, issue.get("comments"), reporter, fetch)
+        comments_error = None
+    except TriageError as exc:
+        comments, comments_incomplete, comments_error = None, None, str(exc)
     text = (issue.get("title") or "") + "\n" + (issue.get("body") or "")
     mentions = extract_amount_mentions(text)
     return {
@@ -130,6 +180,9 @@ def collect(issue_url, fetch=api_get):
         "assignees": [person.get("login") for person in issue.get("assignees", []) if person.get("login")],
         "labels": [label["name"] for label in (issue.get("labels") or []) if isinstance(label, dict) and isinstance(label.get("name"), str) and label["name"]],
         "comment_count": issue.get("comments"),
+        "relevant_comments": comments,
+        "comments_incomplete": comments_incomplete,
+        "comments_error": comments_error,
         "updated_at": issue.get("updated_at"),
         "amount_mentions_unverified": mentions,
         "open_prs_matching_issue_url": search.get("total_count") if search is not None else None,
@@ -165,6 +218,17 @@ def render(result):
     else:
         lines.append(f"时间线记录的开放关联 PR：{len(result['timeline_prs'])}" + ("（已达读取上限，结果可能不完整）" if result["timeline_incomplete"] else ""))
         lines.extend(f"  - {pr['title']}: {pr['url']}" for pr in result["timeline_prs"])
+    if result["comments_error"]:
+        lines.append(f"相关评论未知：{result['comments_error']}")
+    else:
+        lines.append("最近创建的相关评论（仅所读范围）：" +
+                     ("（可能不完整）" if result["comments_incomplete"] else ""))
+        for comment in result["relevant_comments"]:
+            lines.append(f"  - {comment['author']} ({comment['association']}) "
+                         f"创建：{comment['created_at']} 更新：{comment['updated_at']}")
+            lines.append(f"    {comment['url']}")
+            lines.append(f"    {comment['body']}" + ("…（已截断）" if comment["body_truncated"] else ""))
+    lines.append("评论可能因分页变化、编辑、作者范围或读取上限而遗漏；请查看原始讨论。")
     lines.append("注意：")
     lines.extend("  - " + item for item in result["limitations"])
     return "\n".join(lines)

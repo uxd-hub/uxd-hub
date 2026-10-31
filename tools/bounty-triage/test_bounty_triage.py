@@ -68,6 +68,72 @@ class BountyTriageTests(unittest.TestCase):
             return {"total_count": 0, "items": []}
         self.assertEqual(triage.collect("https://github.com/a/b/issues/3", fetch_null)["labels"], [])
 
+    def test_comments_filter_reporter_and_maintainers(self):
+        rows = [
+            {"user": {"login": "funder"}, "author_association": "NONE", "body": "reward details", "html_url": "a"},
+            {"user": {"login": "noise"}, "author_association": "NONE", "body": "hi", "html_url": "b"},
+            {"user": {"login": "maintainer"}, "author_association": "MEMBER",
+             "body": "payouts won't work", "html_url": "c", "created_at": "2026-01-01", "updated_at": "2026-02-01"},
+        ]
+        def fetch(path, params=None):
+            if path.endswith("/comments"):
+                return rows
+            if path.endswith("/timeline"):
+                return []
+            if path.startswith("/repos/"):
+                return {"title": "bounty", "comments": 3, "user": {"login": "FUNDER"}}
+            return {"total_count": 0, "items": []}
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertEqual([x["author"] for x in result["relevant_comments"]], ["funder", "maintainer"])
+        self.assertEqual(result["relevant_comments"][1]["body"], "payouts won't work")
+        self.assertIn("payouts won't work", triage.render(result))
+        out = io.StringIO()
+        triage.print_json(result, out)
+        self.assertEqual(json.loads(out.getvalue())["relevant_comments"][1]["url"], "c")
+
+    def test_comments_tail_pagination_truncation_and_stale_count(self):
+        calls = []
+        row = {"user": {"login": "m"}, "author_association": "MEMBER", "body": "x" * 1201}
+        def fetch(path, params):
+            calls.append(params["page"])
+            return [row] * (100 if params["page"] < 4 else 50)
+        results, incomplete = triage.recent_relevant_comments("a", "b", 3, 350, None, fetch)
+        self.assertEqual(calls, [2, 3, 4])
+        self.assertEqual(len(results), 5)
+        self.assertTrue(incomplete)
+        self.assertTrue(results[0]["body_truncated"])
+        self.assertEqual(len(results[0]["body"]), 1200)
+        results, incomplete = triage.recent_relevant_comments("a", "b", 3, 0, None, lambda p, q: [row])
+        self.assertTrue(incomplete)
+        results, incomplete = triage.recent_relevant_comments("a", "b", 3, 0, None, lambda p, q: [])
+        self.assertFalse(incomplete)
+        self.assertEqual(results, [])
+        calls.clear()
+        def full(path, params):
+            calls.append(params["page"])
+            return [row] * 100
+        results, incomplete = triage.recent_relevant_comments("a", "b", 3, 5, None, full)
+        self.assertEqual(calls, [1, 2, 3])
+        self.assertTrue(incomplete)
+        results, incomplete = triage.recent_relevant_comments("a", "b", 3, 6, None, lambda p, q: [row] * 6)
+        self.assertEqual(len(results), 5)
+        self.assertTrue(incomplete)
+
+    def test_comment_failure_is_unknown_not_empty(self):
+        def fetch(path, params=None):
+            if path.endswith("/comments"):
+                raise triage.TriageError("评论不可用")
+            if path.endswith("/timeline"):
+                return []
+            if path.startswith("/repos/"):
+                return {"title": "test", "comments": 2}
+            return {"total_count": 0, "items": []}
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertIsNone(result["relevant_comments"])
+        self.assertIsNone(result["comments_incomplete"])
+        self.assertIn("评论不可用", result["comments_error"])
+        self.assertIn("相关评论未知", triage.render(result))
+
     def test_search_failure_preserves_issue_and_reports_unknown_competition(self):
         def fetch(path, params=None):
             if path.endswith('/timeline'):

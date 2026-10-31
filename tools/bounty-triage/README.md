@@ -26,6 +26,8 @@ python bounty_triage.py https://github.com/OWNER/REPO/issues/123
 
 请人工核实任务是否接受 AI 协助、验收流程、资金状态、用户所在地的收款资格和付款方式，再决定是否投入时间。
 
+工具依据评论数定位并读取最多 300 条评论，展示其中最近创建的最多 5 条项目维护者、协作者或 issue 发起人的评论及链接；正文超过 1200 字会截断。其他人也可能是资金提供者，项目关联者也不一定负责付款。GitHub 的评论数、分页和编辑可能变化，结果可能遗漏，不能据此判断是否有奖金；请阅读原始讨论。查询失败时显示未知，JSON 中 `relevant_comments` 和 `comments_incomplete` 为 `null`，原因在 `comments_error`。
+
 ## 测试
 
 ```bash
