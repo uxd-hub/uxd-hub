@@ -134,6 +134,39 @@ class BountyTriageTests(unittest.TestCase):
         self.assertIn("评论不可用", result["comments_error"])
         self.assertIn("相关评论未知", triage.render(result))
 
+    def test_amounts_from_all_comments_with_sources_and_limit(self):
+        rows = [{"user": {"login": "person"}, "author_association": "NONE",
+                 "body": "$15 mentioned", "html_url": f"comment-{i}",
+                 "updated_at": f"updated-{i}"} for i in range(11)]
+        rows.insert(0, {"user": {"login": "owner"}, "author_association": "OWNER", "body": "verification needed"})
+        def fetch(path, params=None):
+            if path.endswith("/comments"): return rows
+            if path.endswith("/timeline"): return []
+            if path.startswith("/repos/"): return {"title": "Task", "comments": len(rows)}
+            return {"total_count": 0, "items": []}
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertEqual(result["relevant_comments"][0]["author"], "owner")
+        self.assertEqual(len(result["comment_amounts_unverified"]), 10)
+        self.assertTrue(result["comment_amounts_incomplete"])
+        self.assertEqual(result["comment_amounts_unverified"][0]["url"], "comment-1")
+        self.assertEqual(result["comment_amounts_unverified"][-1]["amounts"], ["$15"])
+        self.assertIn("comment-10", triage.render(result))
+        self.assertIn("未验证", triage.render(result))
+        out = io.StringIO()
+        triage.print_json(result, out)
+        self.assertEqual(json.loads(out.getvalue())["comment_amounts_unverified"][-1]["url"], "comment-10")
+
+    def test_comment_amounts_unknown_on_failure(self):
+        def fetch(path, params=None):
+            if path.endswith("/comments"): raise triage.TriageError("评论不可用")
+            if path.endswith("/timeline"): return []
+            if path.startswith("/repos/"): return {"title": "Test"}
+            return {"total_count": 0, "items": []}
+        result = triage.collect("https://github.com/a/b/issues/3", fetch)
+        self.assertIsNone(result["comment_amounts_unverified"])
+        self.assertIsNone(result["comment_amounts_incomplete"])
+        self.assertIn("评论中的金额未知", triage.render(result))
+
     def test_search_failure_preserves_issue_and_reports_unknown_competition(self):
         def fetch(path, params=None):
             if path.endswith('/timeline'):

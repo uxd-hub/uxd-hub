@@ -102,7 +102,7 @@ def extract_amount_mentions(text):
     return list(dict.fromkeys(pattern.findall(text)))[:10]
 
 
-def recent_relevant_comments(owner, repo, number, total, reporter, fetch):
+def recent_relevant_comments(owner, repo, number, total, reporter, fetch, amount_comments=None):
     """Inspect up to 300 comments ordered by creation, not edits."""
     page_size, max_pages = 100, 3
     known_total = isinstance(total, int) and not isinstance(total, bool) and total >= 0
@@ -123,6 +123,16 @@ def recent_relevant_comments(owner, repo, number, total, reporter, fetch):
             user = comment.get("user") or {}
             author = user.get("login") if isinstance(user, dict) else None
             association = comment.get("author_association")
+            if amount_comments is not None:
+                body = comment.get("body")
+                mentions = extract_amount_mentions(body) if isinstance(body, str) else []
+                if mentions:
+                    amount_comments.append({
+                        "author": author, "url": comment.get("html_url"),
+                        "updated_at": comment.get("updated_at"), "amounts": mentions,
+                    })
+                    if len(amount_comments) > 11:
+                        del amount_comments[0]
             if association not in ("OWNER", "MEMBER", "COLLABORATOR") and not (
                 isinstance(author, str) and isinstance(reporter, str) and author.lower() == reporter.lower()
             ):
@@ -165,11 +175,15 @@ def collect(issue_url, fetch=api_get):
     try:
         user = issue.get("user") or {}
         reporter = user.get("login") if isinstance(user, dict) else None
+        amount_comments = []
         comments, comments_incomplete = recent_relevant_comments(
-            owner, repo, number, issue.get("comments"), reporter, fetch)
+            owner, repo, number, issue.get("comments"), reporter, fetch, amount_comments)
+        comment_amounts_incomplete = comments_incomplete or len(amount_comments) > 10
+        comment_amounts = amount_comments[-10:]
         comments_error = None
     except TriageError as exc:
         comments, comments_incomplete, comments_error = None, None, str(exc)
+        comment_amounts, comment_amounts_incomplete = None, None
     text = (issue.get("title") or "") + "\n" + (issue.get("body") or "")
     mentions = extract_amount_mentions(text)
     return {
@@ -183,6 +197,8 @@ def collect(issue_url, fetch=api_get):
         "relevant_comments": comments,
         "comments_incomplete": comments_incomplete,
         "comments_error": comments_error,
+        "comment_amounts_unverified": comment_amounts,
+        "comment_amounts_incomplete": comment_amounts_incomplete,
         "updated_at": issue.get("updated_at"),
         "amount_mentions_unverified": mentions,
         "open_prs_matching_issue_url": search.get("total_count") if search is not None else None,
@@ -228,6 +244,15 @@ def render(result):
                          f"创建：{comment['created_at']} 更新：{comment['updated_at']}")
             lines.append(f"    {comment['url']}")
             lines.append(f"    {comment['body']}" + ("…（已截断）" if comment["body_truncated"] else ""))
+    if result["comments_error"]:
+        lines.append("评论中的金额未知，原因同上。")
+    else:
+        lines.append("评论中的金额（未验证，仅所读范围）：" +
+                     ("（可能不完整）" if result["comment_amounts_incomplete"] else ""))
+        for entry in result["comment_amounts_unverified"]:
+            lines.append(f"  - {entry['author']} 更新：{entry['updated_at']} "
+                         f"{', '.join(entry['amounts'])} {entry['url']}")
+    lines.append("评论金额仅为文本提及，不代表仍有效、已托管或保证支付。")
     lines.append("评论可能因分页变化、编辑、作者范围或读取上限而遗漏；请查看原始讨论。")
     lines.append("注意：")
     lines.extend("  - " + item for item in result["limitations"])
