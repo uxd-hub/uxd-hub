@@ -167,6 +167,22 @@ class BountyTriageTests(unittest.TestCase):
         self.assertIsNone(result["comment_amounts_incomplete"])
         self.assertIn("评论中的金额未知", triage.render(result))
 
+    def test_issue_comment_link_is_canonicalized(self):
+        link = "https://github.com/coollabsio/coolify/issues/6894#issuecomment-5655068295"
+        self.assertEqual(triage.parse_issue_url(link), ("coollabsio", "coolify", 6894))
+        def fetch(path, params=None):
+            if path.endswith("/timeline") or path.endswith("/comments"):
+                return []
+            if path.startswith("/repos/"):
+                return {"title": "Issue", "comments": 0}
+            return {"total_count": 0, "items": []}
+        result = triage.collect(link, fetch)
+        self.assertEqual(result["issue_url"], "https://github.com/coollabsio/coolify/issues/6894")
+        for bad in ("https://github.com.evil.example/a/b/issues/3#issuecomment-1",
+                    "https://github.com/a/b/issues/3?x=1#issuecomment-1"):
+            with self.subTest(bad=bad), self.assertRaises(triage.TriageError):
+                triage.parse_issue_url(bad)
+
     def test_search_failure_preserves_issue_and_reports_unknown_competition(self):
         def fetch(path, params=None):
             if path.endswith('/timeline'):

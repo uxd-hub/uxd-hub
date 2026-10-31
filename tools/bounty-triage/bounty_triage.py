@@ -35,7 +35,7 @@ def parse_issue_url(value):
     except ValueError:
         raise TriageError("请输入完整的 GitHub issue 地址，例如 https://github.com/owner/repo/issues/123") from None
     match = re.fullmatch(r"/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9_.-]+)/issues/([1-9][0-9]*)/?", parsed.path)
-    if parsed.scheme != "https" or parsed.netloc.lower() not in ("github.com", "www.github.com") or not match or parsed.query or parsed.fragment:
+    if parsed.scheme != "https" or parsed.netloc.lower() not in ("github.com", "www.github.com") or not match or parsed.query:
         raise TriageError("请输入完整的 GitHub issue 地址，例如 https://github.com/owner/repo/issues/123")
     return match.group(1), match.group(2), int(match.group(3))
 

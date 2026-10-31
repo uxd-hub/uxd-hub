@@ -10,6 +10,8 @@
 python bounty_triage.py https://github.com/OWNER/REPO/issues/123
 ```
 
+也可以使用带有 `#issuecomment-…` 的 issue 评论链接；工具会检查对应的 issue。
+
 加 `--json` 可以输出机器可读的 JSON。默认无需登录；GitHub 的匿名 API 有请求频率限制。如需更高限额，可选择在本机设置 `GITHUB_TOKEN` 环境变量，使用已授权的令牌。请不要在公共场所分享令牌。
 
 ## 输出和限制
