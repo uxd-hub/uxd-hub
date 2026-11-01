@@ -4,7 +4,11 @@
 
 ## 使用
 
-需要 Python 3.9 或更新版本，无需额外安装第三方库。下载本目录，打开终端并进入该目录，然后运行：
+需要 Python 3.9 或更新版本，无需额外安装第三方库。
+
+1. 打开 [仓库主页](https://github.com/uxd-hub/uxd-hub)，点击 **Code → Download ZIP**，下载并解压。
+2. 进入解压后文件夹中的 `tools/bounty-triage`。在 Windows 文件资源管理器的地址栏输入 `cmd` 并回车，即可在此目录打开命令窗口。
+3. 将下面地址替换为要检查的 GitHub issue 地址，然后运行：
 
 ```bash
 python bounty_triage.py https://github.com/OWNER/REPO/issues/123
