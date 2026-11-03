@@ -311,7 +311,9 @@ class RedirectTests(unittest.TestCase):
                     response.msg = "redirect"
                     return response
             opener = build_opener(FakeHTTPS(), triage.GitHubRedirectHandler())
-            with self.subTest(code=code), self.assertRaises(triage.TriageError):
+            # Python 3.9 rejects 308 before the redirect handler; both errors stop the redirect.
+            expected = (triage.TriageError, HTTPError) if code == 308 else (triage.TriageError,)
+            with self.subTest(code=code), self.assertRaises(expected):
                 opener.open(Request("https://api.github.com/repos/a/b", headers={"Authorization": "Bearer test-token"}))
             self.assertEqual(seen, ["https://api.github.com/repos/a/b"])
 
