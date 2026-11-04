@@ -376,5 +376,49 @@ class AmountTests(unittest.TestCase):
         self.assertEqual(triage.extract_amount_mentions("悬赏25元，25元"), ["25元"])
 
 
+class RepositoryArchiveTests(unittest.TestCase):
+    def make_fetch(self, repository):
+        def fetch(path, params=None):
+            if path == "/repos/a/b":
+                if isinstance(repository, Exception):
+                    raise repository
+                return repository
+            if path == "/repos/a/b/issues/3":
+                return {"title": "Still open", "state": "open", "comments": 0}
+            if path.endswith("/timeline") or path.endswith("/comments"):
+                return []
+            if path == "/search/issues":
+                return {"total_count": 0, "items": []}
+            raise AssertionError("Unexpected path: " + path)
+        return fetch
+
+    def test_archived_and_active_repositories_in_text_and_json(self):
+        for archived, label in ((True, "已归档"), (False, "未归档")):
+            with self.subTest(archived=archived):
+                result = triage.collect("https://github.com/a/b/issues/3",
+                                        self.make_fetch({"archived": archived}))
+                self.assertIs(result["repository_archived"], archived)
+                self.assertIsNone(result["repository_error"])
+                self.assertEqual(result["state"], "open")
+                self.assertIn("仓库归档状态：" + label, triage.render(result))
+                out = io.StringIO()
+                triage.print_json(result, out)
+                self.assertIs(json.loads(out.getvalue())["repository_archived"], archived)
+
+    def test_repository_failure_preserves_issue_and_displays_unknown(self):
+        for repository in (triage.TriageError("受限"), {}, {"archived": "false"}, []):
+            with self.subTest(repository=repository):
+                result = triage.collect("https://github.com/a/b/issues/3",
+                                        self.make_fetch(repository))
+                self.assertEqual(result["title"], "Still open")
+                self.assertIsNone(result["repository_archived"])
+                self.assertTrue(result["repository_error"])
+                self.assertIn("仓库归档状态：未知", triage.render(result))
+                self.assertIn("仓库状态查询失败：", triage.render(result))
+                out = io.StringIO()
+                triage.print_json(result, out)
+                self.assertIsNone(json.loads(out.getvalue())["repository_archived"])
+
+
 if __name__ == "__main__":
     unittest.main()

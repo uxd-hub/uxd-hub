@@ -168,6 +168,13 @@ def collect(issue_url, fetch=api_get):
         search = None
         search_error = str(exc)
     try:
+        repository = fetch(f"/repos/{owner}/{repo}")
+        if not isinstance(repository, dict) or not isinstance(repository.get("archived"), bool):
+            raise TriageError("GitHub 仓库归档状态无法识别。")
+        repository_archived, repository_error = repository["archived"], None
+    except TriageError as exc:
+        repository_archived, repository_error = None, str(exc)
+    try:
         referenced_prs, timeline_incomplete = timeline_prs(owner, repo, number, fetch)
         timeline_error = None
     except TriageError as exc:
@@ -191,6 +198,8 @@ def collect(issue_url, fetch=api_get):
         "title": issue.get("title"),
         "state": issue.get("state"),
         "state_reason": issue.get("state_reason"),
+        "repository_archived": repository_archived,
+        "repository_error": repository_error,
         "assignees": [person.get("login") for person in issue.get("assignees", []) if person.get("login")],
         "labels": [label["name"] for label in (issue.get("labels") or []) if isinstance(label, dict) and isinstance(label.get("name"), str) and label["name"]],
         "comment_count": issue.get("comments"),
@@ -219,6 +228,8 @@ def render(result):
         f"任务：{show(result['title'])}",
         f"地址：{result['issue_url']}",
         f"状态：{show(result['state'])}（原因：{show(result['state_reason'])}）",
+        "仓库归档状态：" + ("已归档" if result["repository_archived"] is True else
+                         "未归档" if result["repository_archived"] is False else "未知"),
         f"负责人：{', '.join(result['assignees']) or '未列出'}",
         f"标签：{', '.join(result['labels']) or '未列出'}",
         f"评论数：{show(result['comment_count'])}",
@@ -226,6 +237,8 @@ def render(result):
         f"文本中提及的金额（未验证）：{', '.join(result['amount_mentions_unverified']) or '未发现'}",
         f"用完整 issue 网址搜索正文返回的开放 PR：{show(result['open_prs_matching_issue_url'])}" + ("（GitHub 报告搜索结果不完整）" if result['search_incomplete'] else ""),
     ]
+    if result["repository_error"]:
+        lines.append(f"仓库状态查询失败：{result['repository_error']}")
     if result["search_error"]:
         lines.append(f"PR 搜索不可用，竞争情况未知：{result['search_error']}")
     lines.extend(f"  - {pr['title']}: {pr['url']}" for pr in result["matching_prs"] or [])
