@@ -372,6 +372,18 @@ class AmountTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(triage.extract_amount_mentions(text), expected)
 
+    def test_thousands_shorthand_is_preserved_without_partial_matches(self):
+        cases = {
+            "Reward: $1k, $2.5K, $1,200k": ["$1k", "$2.5K", "$1,200k"],
+            "Reward: $1k USD and 2.5k USDC.": ["$1k USD", "2.5k USDC"],
+            "€3k £4K ¥5k 人民币6k": ["€3k", "£4K", "¥5k", "人民币6k"],
+            "$1kg, $1kfoo, $1million, 2kUSDfoo": [],
+            "$1k. $2K,": ["$1k", "$2K"],
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(triage.extract_amount_mentions(text), expected)
+
     def test_duplicate_mentions_are_deduplicated(self):
         self.assertEqual(triage.extract_amount_mentions("悬赏25元，25元"), ["25元"])
 
