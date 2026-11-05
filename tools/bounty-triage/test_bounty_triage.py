@@ -384,6 +384,14 @@ class AmountTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(triage.extract_amount_mentions(text), expected)
 
+    def test_bitcoin_amounts_preserve_units_and_precision(self):
+        text = "5,000-sat sBTC bounty; 0.00001234 BTC; 42 sats, 2 satoshis"
+        self.assertEqual(triage.extract_amount_mentions(text),
+                         ["5,000-sat", "0.00001234 BTC", "42 sats", "2 satoshis"])
+        for bad in ("0.000000001 BTC", "5 saturn", "2 btcoin", "v1.2.3 BTC", "x500 sat"):
+            with self.subTest(bad=bad):
+                self.assertEqual(triage.extract_amount_mentions(bad), [])
+
     def test_duplicate_mentions_are_deduplicated(self):
         self.assertEqual(triage.extract_amount_mentions("悬赏25元，25元"), ["25元"])
 

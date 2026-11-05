@@ -98,10 +98,12 @@ def extract_amount_mentions(text):
     number = r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?'
     prefix_tail = r'(?:\s*(?:[万亿]元?|元))?'
     unit = r'(?:USDC|USDT|USD)(?![A-Za-z0-9_])'
+    bitcoin_number = r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,8})?'
+    bitcoin = bitcoin_number + r'(?!\d|[.,]\d)(?:\s*-\s*|\s+)(?:satoshis?|sats?|sBTC|BTC)(?![A-Za-z0-9_])'
     # Preserve common thousands shorthand; do not turn "$1kg" into "$1".
     bounded = number + r'(?!\d|[.,]\d)'
     prefixed = bounded + r'(?:[kK](?![A-Za-z0-9_])|(?=\s*' + unit + r'|[^A-Za-z0-9_]|$))'
-    pattern = re.compile(r'(?<![A-Za-z0-9_.,])(?:人民币\s*' + prefixed + prefix_tail + r'|\$\s*' + prefixed + prefix_tail + r'(?:\s*' + unit + r')?|[€£¥￥]\s*' + prefixed + prefix_tail + r'|' + bounded + r'(?:[kK](?![A-Za-z0-9_]))?\s*' + unit + r'|' + bounded + r'\s*[万亿]?元)', re.IGNORECASE)
+    pattern = re.compile(r'(?<![A-Za-z0-9_.,])(?:人民币\s*' + prefixed + prefix_tail + r'|\$\s*' + prefixed + prefix_tail + r'(?:\s*' + unit + r')?|[€£¥￥]\s*' + prefixed + prefix_tail + r'|' + bounded + r'(?:[kK](?![A-Za-z0-9_]))?\s*' + unit + r'|' + bounded + r'\s*[万亿]?元|' + bitcoin + r')', re.IGNORECASE)
     return list(dict.fromkeys(pattern.findall(text)))[:10]
 
 
